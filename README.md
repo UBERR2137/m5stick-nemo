@@ -16,6 +16,7 @@ NEMO is named after the small, clever and stubborn fish in Finding Nemo. This pr
 * ideas?
 
 ## Features
+* NEW: BadUSB Hunter (only for Cardputer and ADV Models) - Recognizes many USB peripherals via USB-C OTG and can warn you about HID devices (blinking red LED), suspicious USB Cables and BadUSB devices with multiple interface profiles including HID. Use to field-test unknown and untrustworthy USB peripherals before investigating with a computer.
 * NEW: Wireless Attack Detection: BLE Hunter, Deauth Hunter and PineAP Hunter modes provide situational awareness of ongoing attacks in your area.
 * [TV B-Gone](http://www.righto.com/2010/11/improved-arduino-tv-b-gone.html) port (thanks to MrArm's [HAKRWATCH](https://github.com/MrARM/hakrwatch)) to shut off many infrared-controlled TVs, projectors and other devices
 * [AppleJuice](https://github.com/ECTO-1A/AppleJuice) iOS Bluetooth device pairing spam
