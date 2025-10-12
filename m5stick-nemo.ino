@@ -203,7 +203,15 @@ uint16_t FGCOLOR=0xFFF1; // placeholder
 // 21 - Deauth Attack
 // 22 - Custom Color Settings
 // 23 - Pre-defined color themes
-// .. - ..
+// 24 - Deauth Hunter
+// 25 - BLE Hunter
+// 26 - PineAP Hunter
+// 27 - BadUSB Hunter (CARDPUTER only)
+// 29 - BLE Hunter RSSI Setting
+// 30 - Deauth Hunter RSSI Setting
+// 31 - BLE Hunter Alert Packets Setting
+// 32 - Deauth Hunter Alert Packets Setting
+// 33 - PineAP Hunter Alert SSIDs Setting
 // 97 - Mount/UnMount SD Card on M5Stick devices, if SDCARD is declared
 
 const String contributors[] PROGMEM = {
@@ -286,7 +294,8 @@ int dh_pkts = 0;
 
 #include "deauth_hunter.h"                                                          //DEAUTH HUNTER
 #include "ble_hunter.h"                                                             //BLE HUNTER
-#include "pineap_hunter.h"                                                         //PINEAP HUNTER
+#include "pineap_hunter.h"                                                          //PINEAP HUNTER
+#include "badusb_hunter.h"                                                          //BADUSB HUNTER
 struct MENU {
   char name[19];
   int command;
@@ -513,6 +522,9 @@ MENU mmenu[] = {
   { "TV-B-Gone", 13}, // We jump to the region menu first
   { "Bluetooth", 16},
   { "WiFi", 12},
+#if defined(CARDPUTER)
+  { "BadUSB Hunter", 27},
+#endif
   { "QR Codes", 18},
   { TXT_SETTINGS, 2},
 };
@@ -2579,6 +2591,9 @@ ProcessHandler processes[] = {
   {24, deauth_hunter_setup, deauth_hunter_loop, "Deauth Hunter"},
   {25, ble_hunter_setup, ble_hunter_loop, "BLE Hunter"},
   {26, pineap_hunter_setup, pineap_hunter_loop, "PineAP Hunter"},
+#if defined(CARDPUTER)
+  {27, badusb_hunter_setup, badusb_hunter_loop, "BadUSB Hunter"},
+#endif
   {29, bh_rssi_setup, bh_rssi_loop, "BH RSSI Setting"},
   {30, dh_rssi_setup, dh_rssi_loop, "DH RSSI Setting"}, 
   {31, bh_alert_pkts_setup, bh_alert_pkts_loop, "BH Alert Pkts Setting"},
@@ -3765,3 +3780,357 @@ void ph_alert_ssids_loop() {
     delay(250);
   }
 }
+
+///////////////////////////////
+/// BADUSB HUNTER IMPLEMENTATION ///
+///////////////////////////////
+
+#if defined(CARDPUTER)
+
+// Global state for BadUSB Hunter - SIMPLIFIED, NO CALLBACKS
+static USBDeviceInfo badusb_currentDevice;
+static bool badusb_deviceConnected = false;
+static bool badusb_deviceWasConnected = false;
+static unsigned long badusb_lastBlinkTime = 0;
+static bool badusb_ledState = false;
+static usb_host_client_handle_t badusb_client_hdl = nullptr;
+static CRGB badusb_leds[BADUSB_NUM_LEDS];
+
+// USB Class code lookup
+const char* badusb_getUSBClassName(uint8_t classCode) {
+  switch(classCode) {
+    case 0x00: return "Device";
+    case 0x01: return "Audio";
+    case 0x02: return "CDC-Comm";
+    case 0x03: return "HID";
+    case 0x05: return "Physical";
+    case 0x06: return "Image";
+    case 0x07: return "Printer";
+    case 0x08: return "Mass Storage";
+    case 0x09: return "Hub";
+    case 0x0A: return "CDC-Data";
+    case 0x0B: return "Smart Card";
+    case 0x0D: return "Security";
+    case 0x0E: return "Video";
+    case 0x0F: return "Healthcare";
+    case 0x10: return "AV";
+    case 0x11: return "Billboard";
+    case 0xDC: return "Diagnostic";
+    case 0xE0: return "Wireless";
+    case 0xEF: return "Misc";
+    case 0xFE: return "App-Specific";
+    case 0xFF: return "Vendor-Spec";
+    default: return "Unknown";
+  }
+}
+
+// BadUSB Detection Heuristics
+void badusb_analyzeDevice(USBDeviceInfo* device) {
+  device->isSuspicious = false;
+  device->suspicionReason = "";
+
+  int hidCount = 0;
+
+  for (int i = 0; i < device->numInterfaces; i++) {
+    if (device->interfaceClasses[i] == 0x03) hidCount++;
+  }
+
+  // Suspicious: Multiple interfaces with at least one HID
+  if (device->numInterfaces > 1 && hidCount > 0) {
+    device->isSuspicious = true;
+    device->suspicionReason = "Multi-interface+HID";
+  }
+
+  if (hidCount > 1) {
+    device->isSuspicious = true;
+    device->suspicionReason = "Multiple HID ifaces";
+  }
+
+  // Rubber Ducky (Hak5)
+  if (device->vid == 0x03EB && device->pid == 0x2403) {
+    device->isSuspicious = true;
+    device->suspicionReason = "Hak5 Rubber Ducky";
+  }
+
+  if (device->numInterfaces == hidCount && hidCount > 0){
+    device->suspicionReason = "HID";
+    device->isSuspicious = false;
+  }
+}
+
+// Display functions
+void badusb_displayWelcome() {
+  DISP.fillScreen(BGCOLOR);
+  DISP.setCursor(0, 0);
+  DISP.setTextSize(MEDIUM_TEXT);
+  DISP.setTextColor(BGCOLOR, FGCOLOR);
+  DISP.println("BadUSB Hunter");
+  DISP.setTextSize(SMALL_TEXT);
+  DISP.setTextColor(FGCOLOR, BGCOLOR);
+  DISP.println("Insert USB device");
+  DISP.println("");
+  DISP.setTextSize(TINY_TEXT);
+  DISP.println("USB Host ready");
+  DISP.println("Next: Exit");
+}
+
+void badusb_displayDeviceInfo(USBDeviceInfo* device) {
+  DISP.fillScreen(BGCOLOR);
+  DISP.setCursor(0, 0);
+
+  DISP.setTextSize(SMALL_TEXT);
+  if (device->isSuspicious) {
+    DISP.setTextColor(TFT_RED);
+    DISP.println("!SUSPICIOUS!");
+    play_alert_beep();
+  } else if (device->suspicionReason=="HID") {
+    DISP.setTextColor(TFT_YELLOW);
+    DISP.println("HID-Only Device");
+    play_alert_beep();
+
+  } else {
+    DISP.setTextColor(TFT_GREEN);
+    DISP.println("Device OK");
+  }
+
+  DISP.setTextSize(TINY_TEXT);
+
+  DISP.setTextColor(TFT_YELLOW);
+  DISP.print("VID:PID ");
+  DISP.setTextColor(TFT_WHITE);
+  char vidpid[16];
+  sprintf(vidpid, "%04X:%04X", device->vid, device->pid);
+  DISP.println(vidpid);
+
+  DISP.setTextColor(TFT_CYAN);
+  DISP.print("Class: ");
+  DISP.setTextColor(TFT_WHITE);
+  DISP.println(badusb_getUSBClassName(device->deviceClass));
+
+  DISP.setTextColor(TFT_CYAN);
+  DISP.print("Interfaces: ");
+  DISP.setTextColor(TFT_WHITE);
+  DISP.println(device->numInterfaces);
+
+  for (int i = 0; i < device->numInterfaces && i < 8; i++) {
+    DISP.setTextColor(TFT_WHITE);
+    DISP.print("  ");
+    DISP.print(i);
+    DISP.print(": ");
+    DISP.println(badusb_getUSBClassName(device->interfaceClasses[i]));
+  }
+
+  if (device->isSuspicious) {
+    DISP.setTextSize(SMALL_TEXT);
+    DISP.println("");
+    DISP.setTextColor(TFT_RED);
+    DISP.println(device->suspicionReason);
+  }
+  
+  DISP.println("");
+  DISP.setTextSize(TINY_TEXT);
+  DISP.setTextColor(FGCOLOR, BGCOLOR);
+  DISP.println("Next: Exit");
+}
+
+void badusb_updateLED() {
+  if (!badusb_deviceConnected) {
+    if (badusb_leds[0] != CRGB::Black) {
+      badusb_leds[0] = CRGB::Black;
+      FastLED.show();
+    }
+    badusb_ledState = false;
+  } else {
+    bool isHID = false;
+    for (int i = 0; i < badusb_currentDevice.numInterfaces; i++) {
+      if (badusb_currentDevice.interfaceClasses[i] == 0x03) {
+        isHID = true;
+        break;
+      }
+    }
+
+    if (isHID) {
+      unsigned long now = millis();
+      if (now - badusb_lastBlinkTime >= 250) {
+        badusb_ledState = !badusb_ledState;
+        badusb_leds[0] = badusb_ledState ? CRGB::Red : CRGB::Black;
+        FastLED.show();
+        badusb_lastBlinkTime = now;
+      }
+    } else {
+      if (badusb_leds[0] != CRGB::Green) {
+        badusb_leds[0] = CRGB::Green;
+        FastLED.show();
+      }
+      badusb_ledState = true;
+    }
+  }
+}
+
+// Process a device connection (called from loop when device detected)
+void badusb_processNewDevice(uint8_t address) {
+  badusb_deviceConnected = true;
+  memset(&badusb_currentDevice, 0, sizeof(badusb_currentDevice));
+
+  usb_device_handle_t dev_hdl;
+  esp_err_t err = usb_host_device_open(badusb_client_hdl, address, &dev_hdl);
+
+  if (err == ESP_OK) {
+    const usb_device_desc_t *dev_desc;
+    if (usb_host_get_device_descriptor(dev_hdl, &dev_desc) == ESP_OK) {
+      badusb_currentDevice.vid = dev_desc->idVendor;
+      badusb_currentDevice.pid = dev_desc->idProduct;
+      badusb_currentDevice.deviceClass = dev_desc->bDeviceClass;
+      badusb_currentDevice.numInterfaces = 0;
+
+      const usb_config_desc_t *config_desc;
+      if (usb_host_get_active_config_descriptor(dev_hdl, &config_desc) == ESP_OK) {
+        int offset = 0;
+        const usb_standard_desc_t *next_desc = (const usb_standard_desc_t *)config_desc;
+
+        while (offset < config_desc->wTotalLength && badusb_currentDevice.numInterfaces < 8) {
+          next_desc = (const usb_standard_desc_t *)(((uint8_t *)config_desc) + offset);
+
+          if (next_desc->bDescriptorType == USB_B_DESCRIPTOR_TYPE_INTERFACE) {
+            const usb_intf_desc_t *intf_desc = (const usb_intf_desc_t *)next_desc;
+            badusb_currentDevice.interfaceClasses[badusb_currentDevice.numInterfaces] = intf_desc->bInterfaceClass;
+            badusb_currentDevice.numInterfaces++;
+          }
+
+          offset += next_desc->bLength;
+        }
+      }
+    }
+
+    usb_host_device_close(badusb_client_hdl, dev_hdl);
+
+    badusb_analyzeDevice(&badusb_currentDevice);
+    badusb_displayDeviceInfo(&badusb_currentDevice);
+  }
+}
+
+// Cleanup - SIMPLE: just uninstall, no callbacks to worry about
+void badusb_cleanup() {
+  // Turn off LED
+  badusb_leds[0] = CRGB::Black;
+  FastLED.show();
+
+  // Deregister client
+  if (badusb_client_hdl) {
+    usb_host_client_deregister(badusb_client_hdl);
+    badusb_client_hdl = nullptr;
+  }
+
+  // Uninstall USB host
+  usb_host_uninstall();
+
+  // Reset state
+  memset(&badusb_currentDevice, 0, sizeof(badusb_currentDevice));
+  badusb_deviceConnected = false;
+  badusb_deviceWasConnected = false;
+  badusb_ledState = false;
+  badusb_lastBlinkTime = 0;
+}
+
+void badusb_hunter_setup() {
+  DISP.setRotation(1);
+  DISP.setTextSize(SMALL_TEXT);
+  DISP.setTextColor(TFT_WHITE);
+  badusb_displayWelcome();
+
+  FastLED.addLeds<WS2812, BADUSB_LED_PIN, GRB>(badusb_leds, BADUSB_NUM_LEDS);
+  FastLED.setBrightness(50);
+  badusb_leds[0] = CRGB::Black;
+  FastLED.show();
+
+  SPEAKER.begin();
+
+  // Install USB host in SYNCHRONOUS mode (no callbacks!)
+  const usb_host_config_t host_config = {
+    .skip_phy_setup = false,
+    .intr_flags = ESP_INTR_FLAG_LEVEL1,
+  };
+
+  esp_err_t err = usb_host_install(&host_config);
+  if (err != ESP_OK) {
+    DISP.setTextColor(TFT_RED);
+    DISP.print("USB Host FAIL: ");
+    DISP.println(err, HEX);
+    delay(2000);
+    return;
+  }
+
+  // Register client in SYNCHRONOUS mode
+  const usb_host_client_config_t client_config = {
+    .is_synchronous = true,  // KEY: synchronous mode!
+    .max_num_event_msg = 5,
+    .async = {
+      .client_event_callback = nullptr,  // NO CALLBACK
+      .callback_arg = nullptr,
+    }
+  };
+
+  err = usb_host_client_register(&client_config, &badusb_client_hdl);
+  if (err != ESP_OK) {
+    DISP.setTextColor(TFT_RED);
+    DISP.print("Client reg FAIL: ");
+    DISP.println(err, HEX);
+    delay(2000);
+    usb_host_uninstall();
+    return;
+  }
+  
+  // Reset state
+  badusb_deviceConnected = false;
+  badusb_deviceWasConnected = false;
+}
+
+void badusb_hunter_loop() {
+  // Update LED
+  badusb_updateLED();
+  check_select_press();
+  // Check for exit
+  if (check_next_press()) {
+    badusb_cleanup();
+    isSwitching = true;
+    current_proc = 1;
+    return;
+  }
+
+  // Poll for connected devices by checking device address list
+  uint8_t dev_addr_list[10];
+  int num_devices = 0;
+
+  // Get list of connected device addresses
+  esp_err_t err = usb_host_device_addr_list_fill(10, dev_addr_list, &num_devices);
+
+  if (err == ESP_OK) {
+    if (num_devices > 0 && !badusb_deviceConnected) {
+      // New device detected!
+      badusb_processNewDevice(dev_addr_list[0]);
+      badusb_deviceWasConnected = true;
+    } else if (num_devices == 0 && badusb_deviceWasConnected) {
+      // Device was disconnected
+      DISP.fillScreen(BGCOLOR);
+      DISP.setTextSize(SMALL_TEXT);
+      DISP.setTextColor(TFT_YELLOW);
+      DISP.println("DISCONNECTED");
+      delay(500);
+
+      memset(&badusb_currentDevice, 0, sizeof(badusb_currentDevice));
+      badusb_deviceConnected = false;
+
+      badusb_leds[0] = CRGB::Black;
+      FastLED.show();
+      badusb_displayWelcome();
+      badusb_deviceWasConnected = false;
+    }
+  }
+
+  // Let USB host library process internal events
+  usb_host_lib_handle_events(10, nullptr);
+
+  delay(100);
+}
+
+#endif // CARDPUTER

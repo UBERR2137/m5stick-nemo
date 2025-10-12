@@ -16,6 +16,7 @@ NEMO is named after the small, clever and stubborn fish in Finding Nemo. This pr
 * ideas?
 
 ## Features
+* NEW: BadUSB Hunter (only for Cardputer and ADV Models) - Recognizes many USB peripherals via USB-C OTG and can warn you about HID devices (blinking red LED), suspicious USB Cables and BadUSB devices with multiple interface profiles including HID. Use to field-test unknown and untrustworthy USB peripherals before investigating with a computer.
 * NEW: Wireless Attack Detection: BLE Hunter, Deauth Hunter and PineAP Hunter modes provide situational awareness of ongoing attacks in your area.
 * [TV B-Gone](http://www.righto.com/2010/11/improved-arduino-tv-b-gone.html) port (thanks to MrArm's [HAKRWATCH](https://github.com/MrARM/hakrwatch)) to shut off many infrared-controlled TVs, projectors and other devices
 * [AppleJuice](https://github.com/ECTO-1A/AppleJuice) iOS Bluetooth device pairing spam
@@ -55,6 +56,35 @@ In NEMO Portal mode, NEMO activates an open WiFi Hotspot named "Nemo Free WiFi" 
 * If your device has an SD Card reader with a FAT filesystem formatted card inserted, the usernames and passwords will be logged to nemo-portal-creds.txt on the SD Card for you to peruse later. 
 * SD Card support is only enabled by default on the M5Stack Cardputer platform. It can be enabled on M5Stick devices but an SD Card reader must be built and attached to the front panel pin header.
 * NEMO Portal is only for use on professional engagements with a valid scope of work, educational or demonstration purposes. Storage, sale, or use of personal information without consent is against the law. 🤓
+
+## BadUSB Hunter (Cardputer & ADV Models)
+Analyzes USB Devices plugged into the USB-C Port on the Cardputer to determine likelihood of performing an HID (Keyboard injection) attack  
+This tool allows users to field-test unknown USB Devices and cables before using them on a real computer. 
+* Usage
+  * Launch BadUSB Hunter from the main menu
+  * Attach USB accessories to the USB-C port using a USB-C OTG adapter if needed
+  * BadUSB Hunter will enumerate the device class and any interfaces in its configuration and display the results.
+  * Status:
+    * Device OK: The device does not have any suspicious indicators.
+    * HID-Only Device: The device surfaces only HID (Mouse and/or keyboard) interfaces. This doesn't necessarily mean it is safe.
+    * !SUSPICIOUS!: The device has indicators of being capable of BadUSB Attacks
+  * VID/PID: The Vendor and Product ID (Hex) of the device
+  * Class: The device Class (Text description)
+  * Interfaces: The number of interfaces and a list of them is presented
+
+* USB Power: 
+  * The Cardputer supplies about 3.7 - 4.2 volts from the built-in battery to the USB-C port, and as such it is less than 5 VDC that USB specifies. Many devices will power on to read the device configuration at this lower voltage, but some will not.
+  * You can supply a full 5VDC to the Cardputer through the Grove port on the left side if you slide the switch next to it to the "5V In" position. This will pass through to the USB-C port and provide full power to the attached devices.
+
+* Analysis tips
+  * Genuine HID devices (keyboards, mice, or wireless adapters for them) will of course show up as HID devices and are likely not suspicious. If a keyboard or mouse *also* shows up as some other profile like Mass Storage or Serial, that *IS* suspicious.
+  * The VID/PID for the Hak5 Rubber Ducky is explicitly detected. Additional VID/PID pairs for truly malicious devices welcome! I may add an additional status for malicious devices later.
+  * Some specialty USB cables have a serial-line converter built-in. If a USB cable shows up as only a serial device, it is likely a proprietary cable (often seen for medical or radio devices) and not likely malicious.
+  * Except for the above, USB Cables that are not plugged into anything should NEVER show up as a device. If something appears to be a plan USB cable but registers as a device, it's probably a BadUSB cable (O.MG cable, Evil Crow Cable, etc)
+  * Most BadUSB threats look like a USB Flash drive. If a USB Flash drive identifies as anything other than Mass Storage (but especially if it appears as HID and/or Network devices), it is very likely malicious.  
+  * Some BadUSB Devices like the popular ATTiny85 Digispark identify as a USB Serial interface for a few seconds to allow programming, then switch to a USB HID Device to perform keyboard injection.
+  * Some BadUSB Devices show up as a composite device (CDC-Serial and HID for example) to allow for programming and HID Injection
+  * Some Advanced BadUSB devices may take several seconds to several minutes to fully register. Many contain a full linux distribution that has to boot up first. Few of these are meant to be "found" by victims, and are more likely to be used in-person by an attacker with physical access to a target computer either for the duration of their operation, or left surreptitiously attached for persistence.
 
 ## BLE Hunter
 Identifies presence of excessive BLE Device Advertisements
