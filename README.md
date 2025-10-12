@@ -32,7 +32,7 @@ NEMO is named after the small, clever and stubborn fish in Finding Nemo. This pr
 There are three main controls:
 * Home - Stops the current process and returns you to the menu from almost anywhere in NEMO
 * Next - Moves the cursor to the next menu option. In function modes, this usually stops the process and returns you to the previous menu.
-* Select - Activates the currently-selected menu option, and wakes up the dimmed screen in function modes  
+* Select - Activates the currently-selected menu option, and wakes up the dimmed screen in function modes
 
 * StickC and StickC-Plus
   * Power: Long-press the power button for 6 seconds to turn off the unit
