@@ -100,8 +100,8 @@ jobs:
         run: |
           set -x
           
-          # Install the M5Stack ESP32 core 3.2.2 to match local development
-          arduino-cli core install m5stack:esp32@3.2.2 --additional-urls "https://m5stack.oss-cn-shenzhen.aliyuncs.com/resource/arduino/package_m5stack_index.json"
+          # Install the M5Stack ESP32 core 3.2.5 for StickS3 support
+          arduino-cli core install m5stack:esp32@3.2.5 --additional-urls "https://m5stack.oss-cn-shenzhen.aliyuncs.com/resource/arduino/package_m5stack_index.json"
 
           arduino-cli core search m5stack
           arduino-cli board listall
