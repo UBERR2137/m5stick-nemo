@@ -15,7 +15,7 @@ on:
         type: choice
         required: true
         default: 'M5Cardputer'
-        options: ['M5Cardputer', 'M5StickS3', 'M5StickCPlus2', 'M5StickCPlus', 'M5StickC']
+        options: ['M5Cardputer', 'M5StickS3', 'M5StickCPlus2']
 
 jobs:
   compile_sketch:
@@ -56,25 +56,26 @@ jobs:
                 bootloader_addr: "0x1000",
               },
             }
-          - {
-              name: "M5StickCPlus",
-              fqbn: "m5stack:esp32:m5stack_stickc_plus",
-              extra_flags: "-DSTICK_C_PLUS",
-              libraries: "M5StickCPlus@0.1.1 IRremote M5Stack-SD-Updater M5Unified@0.2.8",
-              partitions: {
-                bootloader_addr: "0x1000",
-              },
-            }
-          - {
-              name: "M5StickC",
-              fqbn: "m5stack:esp32:m5stack_stickc",
-              extra_flags: "-DSTICK_C",
-              # Using latest M5StickC library version for ESP32 Core 3.2.2 compatibility
-              libraries: "M5StickC@0.3.0 IRremote M5Stack-SD-Updater M5Unified@0.2.8",
-              partitions: {
-                bootloader_addr: "0x1000",
-              },
-            }
+          # Temporarily disabled - needs testing after M5Unified refactor
+          # - {
+          #     name: "M5StickCPlus",
+          #     fqbn: "m5stack:esp32:m5stack_stickc_plus",
+          #     extra_flags: "-DSTICK_C_PLUS",
+          #     libraries: "M5StickCPlus@0.1.1 IRremote M5Stack-SD-Updater M5Unified@0.2.8",
+          #     partitions: {
+          #       bootloader_addr: "0x1000",
+          #     },
+          #   }
+          # - {
+          #     name: "M5StickC",
+          #     fqbn: "m5stack:esp32:m5stack_stickc",
+          #     extra_flags: "-DSTICK_C",
+          #     # Using latest M5StickC library version for ESP32 Core 3.2.2 compatibility
+          #     libraries: "M5StickC@0.3.0 IRremote M5Stack-SD-Updater M5Unified@0.2.8",
+          #     partitions: {
+          #       bootloader_addr: "0x1000",
+          #     },
+          #   }
 
     steps:
       - uses: actions/checkout@v4
